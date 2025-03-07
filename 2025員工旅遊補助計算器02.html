@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <title>員工旅遊補助計算器</title>
+</head>
+<body>
+  <h1>員工旅遊補助計算器</h1>
+  <p>請輸入您的到職日期、是否攜帶眷屬，然後按下「開始計算」，即可得知可使用之補助金額。</p>
+
+  <form>
+    <!-- 到職日期 -->
+    <div>
+      <label for="hireDate">到職日期(YYYY-MM-DD): </label>
+      <input type="date" id="hireDate" name="hireDate" required>
+    </div>
+
+    <!-- 是否有眷屬(計算補助1位) -->
+    <div>
+      <label for="dependent">是否攜帶眷屬(計算補助1位): </label>
+      <select id="dependent" name="dependent">
+        <option value="0">否</option>
+        <option value="1">是</option>
+      </select>
+    </div>
+
+    <br>
+    <button type="button" onclick="calculateSubsidy()">開始計算</button>
+  </form>
+
+  <hr>
+
+  <!-- 顯示計算結果 -->
+  <h2>計算結果</h2>
+  <div id="resultArea"></div>
+
+  <script>
+    function calculateSubsidy() {
+      const hireDateStr   = document.getElementById('hireDate').value;
+      const hasDependent  = (document.getElementById('dependent').value === '1');
+
+      // 如果缺少必要資訊，給予提示
+      if (!hireDateStr) {
+        document.getElementById('resultArea').innerHTML = 
+          '<p style="color:red;">請先填寫到職日期。</p>';
+        return;
+      }
+
+      // 轉成日期物件
+      const hireDate = new Date(hireDateStr + 'T00:00:00');
+      // 旅遊舉辦日期固定為 2025/07/01
+      const eventDate = new Date('2025-07-01T00:00:00');
+
+      // 補助基準
+      const EMP_2024_BASE = 12000; // 2024年員工
+      const EMP_2025_BASE = 12000; // 2025年員工
+      const DEP_2024_BASE =  6000; // 2024年眷屬
+      const DEP_2025_BASE =  6000; // 2025年眷屬
+
+      //===========================
+      // (A) 計算 2024 年補助 (月分制)
+      //===========================
+      let emp2024 = 0;
+      let dep2024 = 0;
+
+      const start2024 = new Date('2024-01-01T00:00:00');
+      const end2024   = new Date('2024-12-31T23:59:59');
+
+      // 若到職日在 2024 年期間(或更早)才可能有 2024 補助
+      if (hireDate <= end2024) {
+        // 確認在 2024 年度的實際起算日
+        const actualStart = (hireDate > start2024) ? hireDate : start2024;
+
+        let totalMonthFraction = 0;
+
+        // 逐月(1~12)計算在職天數
+        for (let month = 0; month < 12; month++) {
+          // 2024年中，每個月的起訖日
+          const monthStart = new Date(2024, month, 1);
+          const monthEnd   = new Date(2024, month + 1, 0); 
+          // (month+1,0) 取得該月最後一天，如 2024,1,0 => 1月31日
+
+          // 若此月在員工實際到職日之前或超過2024範圍，跳過
+          if (monthEnd < actualStart) continue;   // 還未到職
+          if (monthStart > end2024)   break;      // 超過2024年
+
+          // 算出該月實際在職期間
+          const inMonthStart = (actualStart > monthStart) ? actualStart : monthStart;
+          const inMonthEnd   = (monthEnd > end2024)       ? end2024    : monthEnd;
+
+          const daysInMonth = daysBetween(inMonthStart, inMonthEnd);
+          const totalDaysOfThisMonth = monthEnd.getDate();
+
+          if (daysInMonth > 0) {
+            // 該月在職比例
+            const monthlyFraction = daysInMonth / totalDaysOfThisMonth;
+            totalMonthFraction += monthlyFraction;
+          }
+        }
+
+        // totalMonthFraction => 一整年中，實際累計了多少「月」
+        const fraction2024 = totalMonthFraction / 12; // 換算成「年度比例」
+
+        emp2024 = EMP_2024_BASE * fraction2024;
+        if (hasDependent) {
+          dep2024 = DEP_2024_BASE * fraction2024;
+        }
+      }
+
+      //===========================
+      // (B) 計算 2025 年補助 (簡化：只要旅遊日期時在職給全額)
+      //===========================
+      let emp2025 = 0;
+      let dep2025 = 0;
+
+      // 如果 2025/07/01 當天前已到職(或當天到職)，視為 2025 全額補助
+      if (hireDate <= eventDate) {
+        emp2025 = EMP_2025_BASE;
+        if (hasDependent) {
+          dep2025 = DEP_2025_BASE;
+        }
+      }
+
+      //===========================
+      // (C) 小計與輸出
+      //===========================
+      const totalEmp = emp2024 + emp2025;
+      const totalDep = dep2024 + dep2025;
+
+      let resultHTML = `
+        <p><strong>員工 2024 年補助：</strong> ${emp2024.toFixed(0)} 元</p>
+        <p><strong>員工 2025 年補助：</strong> ${emp2025.toFixed(0)} 元</p>
+        <p><strong>員工補助合計：</strong> ${totalEmp.toFixed(0)} 元</p>
+      `;
+
+      if (hasDependent) {
+        resultHTML += `
+          <p><strong>眷屬 2024 年補助：</strong> ${dep2024.toFixed(0)} 元</p>
+          <p><strong>眷屬 2025 年補助：</strong> ${dep2025.toFixed(0)} 元</p>
+          <p><strong>眷屬補助合計：</strong> ${totalDep.toFixed(0)} 元</p>
+        `;
+      }
+
+      document.getElementById('resultArea').innerHTML = resultHTML;
+    }
+
+    // 計算「含首尾」的天數差
+    function daysBetween(dateA, dateB) {
+      const oneDayMs = 1000 * 60 * 60 * 24;
+      return Math.floor((dateB - dateA) / oneDayMs) + 1;
+    }
+  </script>
+</body>
+</html>
